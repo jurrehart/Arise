@@ -6,6 +6,7 @@ import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.security.MessageDigest;
@@ -16,8 +17,14 @@ import com.sun.org.apache.xerces.internal.impl.dv.util.HexBin;
 
 import de.dakror.arise.Arise;
 import de.dakror.arise.game.Game;
+import de.dakror.arise.game.building.Building;
+import de.dakror.arise.game.world.World;
+import de.dakror.arise.net.packet.Packet;
+import de.dakror.arise.net.packet.Packet.PacketTypes;
+import de.dakror.arise.net.packet.Packet01Login;
+import de.dakror.arise.net.packet.Packet03World;
+import de.dakror.arise.net.packet.Packet04City;
 import de.dakror.gamesetup.layer.Alert;
-import de.dakror.gamesetup.layer.Layer;
 import de.dakror.gamesetup.ui.ClickEvent;
 import de.dakror.gamesetup.ui.InputField;
 import de.dakror.gamesetup.ui.button.TextButton;
@@ -26,7 +33,7 @@ import de.dakror.gamesetup.util.Helper;
 /**
  * @author Dakror
  */
-public class LoginLayer extends Layer
+public class LoginLayer extends MPLayer
 {
 	BufferedImage cache;
 	TextButton login;
@@ -63,10 +70,7 @@ public class LoginLayer extends Layer
 	{
 		if (login != null) login.enabled = username.getText().length() >= 4 && password.getText().length() > 0;
 		
-		if (Game.currentGame.alpha == 1)
-		{
-			Game.currentGame.startGame();
-		}
+		if (Game.currentGame.alpha == 1) Game.currentGame.startGame();
 	}
 	
 	public void initFirstPage()
@@ -159,27 +163,8 @@ public class LoginLayer extends Layer
 				try
 				{
 					final String pw = new String(HexBin.encode(MessageDigest.getInstance("MD5").digest(password.getText().getBytes()))).toLowerCase();
+					Game.client.sendPacket(new Packet01Login(username.getText(), pw));
 					Game.currentGame.addLayer(new LoadingLayer());
-					
-					new Thread()
-					{
-						@Override
-						public void run()
-						{
-							try
-							{
-								String s = Helper.getURLContent(new URL("http://dakror.de/mp-api/login_noip.php?username=" + username.getText() + "&password=" + pw));
-								
-								Game.currentGame.removeLayer(Game.currentGame.getActiveLayer());
-								
-								login(s);
-							}
-							catch (MalformedURLException e)
-							{
-								e.printStackTrace();
-							}
-						}
-					}.start();
 				}
 				catch (Exception e)
 				{
@@ -188,26 +173,6 @@ public class LoginLayer extends Layer
 			}
 		});
 		components.add(login);
-	}
-	
-	public void login(String response)
-	{
-		if (!response.contains("true"))
-		{
-			Game.currentGame.addLayer(new Alert("Login inkorrekt!", new ClickEvent()
-			{
-				@Override
-				public void trigger()
-				{
-					password.setText("");
-				}
-			}));
-		}
-		else
-		{
-			Game.userID = Integer.parseInt(response.replace("true:", "").trim());
-			Game.currentGame.fadeTo(1, 0.05f);
-		}
 	}
 	
 	@Override
@@ -223,7 +188,7 @@ public class LoginLayer extends Layer
 		
 		if (e.getKeyCode() == KeyEvent.VK_F2)
 		{
-			String id = JOptionPane.showInputDialog("ID der gewünschten Welt: ", 1);
+			String id = JOptionPane.showInputDialog("ID der gewünschten Welt: ", Game.worldID);
 			try
 			{
 				int i = Integer.parseInt(id);
@@ -231,6 +196,65 @@ public class LoginLayer extends Layer
 			}
 			catch (Exception e1)
 			{}
+		}
+	}
+	
+	@Override
+	public void onReceivePacket(Packet p)
+	{
+		super.onReceivePacket(p);
+		
+		if (p.getType() == PacketTypes.LOGIN)
+		{
+			if (!((Packet01Login) p).isLoggedIn())
+			{
+				Game.currentGame.removeLoadingLayer();
+				Game.currentGame.addLayer(new Alert("Login inkorrekt!", new ClickEvent()
+				{
+					@Override
+					public void trigger()
+					{
+						password.setText("");
+					}
+				}));
+			}
+			else
+			{
+				Game.username = ((Packet01Login) p).getUsername();
+				Game.userID = ((Packet01Login) p).getUserId();
+				try
+				{
+					Game.client.sendPacket(new Packet03World(Game.worldID));
+				}
+				catch (IOException e)
+				{
+					e.printStackTrace();
+				}
+			}
+		}
+		
+		if (p.getType() == PacketTypes.WORLD)
+		{
+			try
+			{
+				Game.world = new World((Packet03World) p);
+				Building.MAX_QUEUE = Game.config.getInt("maxqueue") * Game.world.getSpeed();
+				Game.client.sendPacket(new Packet04City(Game.worldID));
+			}
+			catch (Exception e)
+			{
+				e.printStackTrace();
+			}
+		}
+		if (p.getType() == PacketTypes.CITY)
+		{
+			Game.world.onReceivePacket(p);
+			
+			if (Game.world.components.size() >= ((Packet04City) p).getCities())
+			{
+				Game.currentGame.removeLoadingLayer();
+				Game.currentGame.fadeTo(1, 0.05f);
+			}
 		}
 	}
 }

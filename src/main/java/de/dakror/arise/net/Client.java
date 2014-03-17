@@ -6,11 +6,15 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 
+import de.dakror.arise.Arise;
 import de.dakror.arise.game.Game;
+import de.dakror.arise.layer.MPLayer;
 import de.dakror.arise.net.packet.Packet;
 import de.dakror.arise.net.packet.Packet.PacketTypes;
 import de.dakror.arise.net.packet.Packet00Handshake;
 import de.dakror.arise.settings.CFG;
+import de.dakror.arise.util.Assistant;
+import de.dakror.gamesetup.layer.Layer;
 
 /**
  * @author Dakror
@@ -61,15 +65,23 @@ public class Client extends Thread
 	{
 		PacketTypes type = Packet.lookupPacket(data[0]);
 		
+		Packet p = Packet.newInstance(type, data);
+		
 		switch (type)
 		{
 			case INVALID:
 			{
-				CFG.p("received invalid packet: " + new String(data));
+				CFG.e("received invalid packet: " + new String(data));
 				return;
 			}
 			default:
-				CFG.p("reveived unhandled packet: " + type + " [" + Packet.readData(data) + "]");
+				break;
+		}
+		
+		if (p != null)
+		{
+			for (Layer l : Game.currentGame.layers)
+				if (l instanceof MPLayer) ((MPLayer) l).onReceivePacket(p);
 		}
 	}
 	
@@ -119,7 +131,7 @@ public class Client extends Thread
 		socket.setSoTimeout(1000);
 		
 		byte[] data = new Packet00Handshake().getData();
-		socket.send(new DatagramPacket(data, data.length, InetAddress.getByName("255.255.255.255"), Server.PORT));
+		socket.send(new DatagramPacket(data, data.length, Arise.lanserverIP == null ? Assistant.getBroadcastAddress() : InetAddress.getByName(Arise.lanserverIP), Server.PORT));
 		DatagramPacket packet = new DatagramPacket(new byte[Server.PACKETSIZE], Server.PACKETSIZE);
 		try
 		{

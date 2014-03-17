@@ -12,6 +12,10 @@ public abstract class Packet
 		INVALID,
 		HANDSHAKE,
 		LOGIN,
+		DISCONNECT,
+		WORLD,
+		CITY,
+		RESOURCES,
 		
 		;
 		public int getID()
@@ -59,5 +63,24 @@ public abstract class Packet
 		}
 		
 		return PacketTypes.INVALID;
+	}
+	
+	public static Packet newInstance(PacketTypes type, byte[] data)
+	{
+		if (type == PacketTypes.INVALID) return null;
+		
+		String idS = (type.ordinal() - 1) + "";
+		idS = idS.length() == 1 ? "0" + idS : idS;
+		String pt = type.name().toLowerCase();
+		String pName = "Packet" + idS + pt.substring(0, 1).toUpperCase() + pt.substring(1);
+		try
+		{
+			return (Packet) Class.forName("de.dakror.arise.net.packet." + pName).getConstructor(byte[].class).newInstance(data);
+		}
+		catch (Exception e)
+		{
+			e.printStackTrace();
+			return null;
+		}
 	}
 }

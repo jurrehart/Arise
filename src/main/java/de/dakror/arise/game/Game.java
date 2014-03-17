@@ -6,10 +6,6 @@ import java.awt.Graphics2D;
 import java.awt.event.KeyEvent;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 
@@ -18,7 +14,6 @@ import org.json.JSONObject;
 import de.dakror.arise.Arise;
 import de.dakror.arise.game.building.Building;
 import de.dakror.arise.game.world.World;
-import de.dakror.arise.layer.CityHUDLayer;
 import de.dakror.arise.layer.LoadingLayer;
 import de.dakror.arise.layer.LoginLayer;
 import de.dakror.arise.layer.PauseLayer;
@@ -35,18 +30,22 @@ import de.dakror.gamesetup.util.Helper;
  */
 public class Game extends GameApplet
 {
-	public static JSONObject buildingsConfig;
-	public static Game currentGame;
-	public static World world;
+	public static final int INTERVAL = 10;
+	
 	public static Client client;
+	public static Game currentGame;
+	public static JSONObject config;
+	public static String username;
+	public static String buildDate = "from now";
+	public static World world;
+	
+	public static int secondInMinute;
 	public static int userID;
 	public static int worldID = 1;
-	public static String buildDate = "from now";
-	public static long buildTimestamp = 0;
-	public static int secondInMinute;
+	
 	public static boolean inLan = false;
 	
-	public static final int INTERVAL = 10;
+	public static long buildTimestamp = 0;
 	
 	long usedMem;
 	
@@ -68,8 +67,13 @@ public class Game extends GameApplet
 			readManifest();
 			
 			addLayer(new LoginLayer());
-			LoadingLayer ll = new LoadingLayer();
-			addLayer(ll);
+			addLayer(new LoadingLayer());
+			
+			config = new JSONObject(Helper.getURLContent(new URL("http://dakror.de/arise/config.json")));
+			Building.DECONSTRUCT_FACTOR = (float) config.getDouble("deconstruct");
+			Building.UPGRADE_FACTOR = (float) config.getDouble("upgrade");
+			Building.MAX_LEVEL = config.getInt("maxlevel");
+			Building.TROOPS = config.getJSONObject("troops");
 			
 			client = new Client();
 			if (!client.connectToServer())
@@ -93,7 +97,7 @@ public class Game extends GameApplet
 			}
 			else
 			{
-				removeLayer(ll);
+				removeLoadingLayer();
 				client.start();
 			}
 		}
@@ -101,8 +105,12 @@ public class Game extends GameApplet
 		{
 			e.printStackTrace();
 		}
-		
-		
+	}
+	
+	public void removeLoadingLayer()
+	{
+		for (Layer l : layers)
+			if (l instanceof LoadingLayer) layers.remove(l);
 	}
 	
 	@Override
@@ -129,42 +137,31 @@ public class Game extends GameApplet
 	{
 		try
 		{
-			Helper.getURLContent(new URL("http://dakror.de/arise/world?spawn=true&userid=" + userID + "&id=" + worldID));
-			buildingsConfig = new JSONObject(Helper.getURLContent(new URL("http://dakror.de/arise/building")));
-			Building.DECONSTRUCT_FACTOR = (float) buildingsConfig.getDouble("deconstruct");
-			Building.UPGRADE_FACTOR = (float) buildingsConfig.getDouble("upgrade");
-			Building.MAX_LEVEL = buildingsConfig.getInt("maxlevel");
-			Building.TROOPS = buildingsConfig.getJSONObject("troops");
+			// Helper.getURLContent(new URL("http://dakror.de/arise/world?spawn=true&userid=" + userID + "&id=" + worldID));
+			//
+			// Calendar calendar = new GregorianCalendar();
+			// calendar.set(Calendar.MILLISECOND, 0);
+			// secondInMinute = calendar.get(Calendar.SECOND);
+			// final Timer t = new Timer();
+			// t.scheduleAtFixedRate(new TimerTask()
+			// {
+			// @Override
+			// public void run()
+			// {
+			// secondInMinute = (secondInMinute + INTERVAL) % 60;
+			// for (Layer l : layers)
+			// {
+			// if (l instanceof CityHUDLayer)
+			// {
+			// ((CityHUDLayer) l).timerTick();
+			// break;
+			// }
+			// }
+			// }
+			// }, calendar.getTime(), INTERVAL * 1000);
 			
-			Calendar calendar = new GregorianCalendar();
-			calendar.set(Calendar.MILLISECOND, 0);
-			secondInMinute = calendar.get(Calendar.SECOND);
-			final Timer t = new Timer();
-			t.scheduleAtFixedRate(new TimerTask()
-			{
-				@Override
-				public void run()
-				{
-					secondInMinute = (secondInMinute + INTERVAL) % 60;
-					for (Layer l : layers)
-					{
-						if (l instanceof CityHUDLayer)
-						{
-							((CityHUDLayer) l).timerTick();
-							break;
-						}
-					}
-				}
-			}, calendar.getTime(), INTERVAL * 1000);
-			
-			
-			world = new World(worldID);
-			
-			Building.MAX_QUEUE = buildingsConfig.getInt("maxqueue") * world.getSpeed();
-			
-			layers.clear();
-			
-			addLayer(world);
+			setLayer(world);
+			System.gc();
 			
 			fadeTo(0, 0.05f);
 		}
@@ -194,5 +191,20 @@ public class Game extends GameApplet
 		
 		if (e.getKeyCode() == KeyEvent.VK_F1) debug = !debug;
 		if (e.getKeyCode() == KeyEvent.VK_ESCAPE) toggleLayer(new PauseLayer());
+	}
+	
+	public static void exit()
+	{
+		try
+		{
+			currentGame.updater.closeRequested = true;
+			client.running = false;
+			if (!Arise.wrapper) Game.applet.getAppletContext().showDocument(new URL("http://dakror.de"));
+			else System.exit(0);
+		}
+		catch (MalformedURLException e)
+		{
+			e.printStackTrace();
+		}
 	}
 }

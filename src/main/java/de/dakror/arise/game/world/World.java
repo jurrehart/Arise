@@ -6,22 +6,26 @@ import java.awt.Rectangle;
 import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
-import java.net.URL;
 
 import org.json.JSONArray;
-import org.json.JSONObject;
 
 import de.dakror.arise.game.Game;
 import de.dakror.arise.layer.CityLayer;
+import de.dakror.arise.layer.MPLayer;
+import de.dakror.arise.net.packet.Packet;
+import de.dakror.arise.net.packet.Packet.PacketTypes;
+import de.dakror.arise.net.packet.Packet03World;
+import de.dakror.arise.net.packet.Packet04City;
+import de.dakror.arise.net.packet.Packet05Resources;
+import de.dakror.arise.settings.CFG;
 import de.dakror.gamesetup.GameFrame;
-import de.dakror.gamesetup.layer.Layer;
 import de.dakror.gamesetup.ui.Component;
 import de.dakror.gamesetup.util.Helper;
 
 /**
  * @author Dakror
  */
-public class World extends Layer
+public class World extends MPLayer
 {
 	public static int CHUNKSIZE = 256;
 	
@@ -35,16 +39,17 @@ public class World extends Layer
 	BufferedImage chunk;
 	JSONArray citiesData;
 	
+	City gotoCity;
+	
 	Point dragStart, worldDragStart;
 	
-	public World(int id)
+	public World(Packet03World packet)
 	{
 		try
 		{
-			this.id = id;
-			JSONObject data = new JSONObject(Helper.getURLContent(new URL("http://dakror.de/arise/world?get=" + id)));
-			speed = data.getInt("SPEED");
-			name = data.getString("NAME");
+			id = packet.getId();
+			name = packet.getName();
+			speed = packet.getSpeed();
 			
 			minX = minY = 0;
 			
@@ -105,7 +110,6 @@ public class World extends Layer
 	public void update(int tick)
 	{
 		this.tick = tick;
-		if (lastCheck == 0 || tick - lastCheck > 1800 && Game.currentGame.getActiveLayer() instanceof World) updateWorld(); // check once 30 secs
 		
 		updateComponents(tick);
 	}
@@ -136,56 +140,6 @@ public class World extends Layer
 		y = y < -(height - Game.getHeight() + minY) ? -(height - Game.getHeight() + minY) : y;
 		x = x > -minX ? -minX : x;
 		y = y > -minY ? -minY : y;
-	}
-	
-	public void updateWorld()
-	{
-		try
-		{
-			JSONArray newData = new JSONArray(Helper.getURLContent(new URL("http://dakror.de/arise/world?cities=true&id=" + id)));
-			if (citiesData == null || !citiesData.equals(newData))
-			{
-				citiesData = newData;
-				cities = citiesData.length();
-				
-				int middleX = (Game.getWidth() - City.SIZE) / 2;
-				int middleY = (Game.getHeight() - City.SIZE) / 2;
-				
-				for (int i = 0; i < citiesData.length(); i++)
-				{
-					JSONObject o = citiesData.getJSONObject(i);
-					int x = middleX + o.getInt("X") * City.SIZE;
-					int y = middleY + o.getInt("Y") * City.SIZE;
-					
-					boolean found = false;
-					
-					for (Component c : components)
-					{
-						if (c instanceof City && c.getX() == x && c.getY() == y)
-						{
-							((City) c).setName(o.getString("NAME"));
-							((City) c).setLevel(o.getInt("LEVEL"));
-							found = true;
-							break;
-						}
-					}
-					
-					if (!found)
-					{
-						City c = new City(x, y, o);
-						components.add(c);
-					}
-				}
-				
-				updateSize();
-			}
-			
-			lastCheck = tick;
-		}
-		catch (Exception e)
-		{
-			e.printStackTrace();
-		}
 	}
 	
 	@Override
@@ -249,5 +203,50 @@ public class World extends Layer
 	public int getHeight()
 	{
 		return height;
+	}
+	
+	@Override
+	public void onReceivePacket(Packet p)
+	{
+		super.onReceivePacket(p);
+		
+		if (p.getType() == PacketTypes.CITY)
+		{
+			Packet04City packet = (Packet04City) p;
+			int middleX = (Game.getWidth() - City.SIZE) / 2;
+			int middleY = (Game.getHeight() - City.SIZE) / 2;
+			
+			int x = middleX + packet.getX() * City.SIZE;
+			int y = middleY + packet.getY() * City.SIZE;
+			
+			boolean found = false;
+			
+			for (Component c : components)
+			{
+				if (c instanceof City && c.getX() == x && c.getY() == y)
+				{
+					((City) c).setName(packet.getCityName());
+					((City) c).setLevel(packet.getLevel());
+					found = true;
+					break;
+				}
+			}
+			
+			if (!found)
+			{
+				City c = new City(x, y, packet);
+				components.add(c);
+				updateSize();
+			}
+		}
+		if (p.getType() == PacketTypes.RESOURCES && gotoCity != null)
+		{
+			if (gotoCity.getId() == ((Packet05Resources) p).getCityId())
+			{
+				gotoCity.resourcePacket = (Packet05Resources) p;
+				Game.currentGame.fadeTo(1, 0.05f);
+			}
+			else CFG.e("Received invalid packet05resources: current gotoCity.id=" + gotoCity.getId() + ", packet.id=" + ((Packet05Resources) p).getCityId());
+		}
 	}
 }

@@ -3,13 +3,12 @@ package de.dakror.arise.game.world;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.event.MouseEvent;
-
-import org.json.JSONException;
-import org.json.JSONObject;
+import java.io.IOException;
 
 import de.dakror.arise.game.Game;
-import de.dakror.arise.layer.CityHUDLayer;
 import de.dakror.arise.layer.CityLayer;
+import de.dakror.arise.net.packet.Packet04City;
+import de.dakror.arise.net.packet.Packet05Resources;
 import de.dakror.gamesetup.ui.ClickableComponent;
 import de.dakror.gamesetup.util.Helper;
 
@@ -28,17 +27,17 @@ public class City extends ClickableComponent
 	int level;
 	int userId;
 	
-	boolean gotoCity;
+	public Packet05Resources resourcePacket;
 	
-	public City(int x, int y, JSONObject data) throws JSONException
+	public City(int x, int y, Packet04City data)
 	{
 		super(x, y, SIZE, SIZE);
 		
-		name = data.getString("NAME");
-		username = data.getString("USERNAME");
-		userId = data.getInt("USER_ID");
-		id = data.getInt("ID");
-		level = data.getInt("LEVEL");
+		name = data.getCityName();
+		username = data.getUsername();
+		userId = data.getUserId();
+		id = data.getCityId();
+		level = data.getLevel();
 	}
 	
 	@Override
@@ -68,14 +67,15 @@ public class City extends ClickableComponent
 	@Override
 	public void update(int tick)
 	{
-		if (Game.currentGame.alpha == 1 && gotoCity)
+		if (Game.currentGame.alpha == 1 && resourcePacket != null)
 		{
 			CityLayer cl = new CityLayer(City.this);
-			CityHUDLayer.cl = cl;
+			// CityHUDLayer.cl = cl;
 			Game.currentGame.addLayer(cl);
-			Game.currentGame.addLayer(new CityHUDLayer(cl));
-			gotoCity = false;
+			// Game.currentGame.addLayer(new CityHUDLayer(cl));
 			Game.currentGame.fadeTo(0, 0.05f);
+			Game.world.gotoCity = null;
+			resourcePacket = null;
 		}
 	}
 	
@@ -126,8 +126,15 @@ public class City extends ClickableComponent
 		
 		if (state == 1 && e.getClickCount() == 2 && e.getButton() == MouseEvent.BUTTON1 && userId == Game.userID)
 		{
-			gotoCity = true;
-			Game.currentGame.fadeTo(1, 0.05f);
+			Game.world.gotoCity = this;
+			try
+			{
+				Game.client.sendPacket(new Packet05Resources(id));
+			}
+			catch (IOException e1)
+			{
+				e1.printStackTrace();
+			}
 		}
 	}
 }
