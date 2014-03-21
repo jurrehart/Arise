@@ -43,6 +43,8 @@ public class Game extends GameApplet
 	public static int userID;
 	public static int worldID = 1;
 	
+	
+	public static boolean gotoMenu;
 	public static boolean inLan = false;
 	
 	public static long buildTimestamp = 0;
@@ -54,6 +56,22 @@ public class Game extends GameApplet
 	public Game()
 	{
 		currentGame = this;
+	}
+	
+	public static void loadConfig()
+	{
+		try
+		{
+			config = new JSONObject(Helper.getURLContent(new URL("http://dakror.de/arise/config.json")));
+			Building.DECONSTRUCT_FACTOR = (float) config.getDouble("deconstruct");
+			Building.UPGRADE_FACTOR = (float) config.getDouble("upgrade");
+			Building.MAX_LEVEL = config.getInt("maxlevel");
+			Building.TROOPS = config.getJSONObject("troops");
+		}
+		catch (Exception e)
+		{
+			e.printStackTrace();
+		}
 	}
 	
 	@Override
@@ -69,11 +87,7 @@ public class Game extends GameApplet
 			addLayer(new LoginLayer());
 			addLayer(new LoadingLayer());
 			
-			config = new JSONObject(Helper.getURLContent(new URL("http://dakror.de/arise/config.json")));
-			Building.DECONSTRUCT_FACTOR = (float) config.getDouble("deconstruct");
-			Building.UPGRADE_FACTOR = (float) config.getDouble("upgrade");
-			Building.MAX_LEVEL = config.getInt("maxlevel");
-			Building.TROOPS = config.getJSONObject("troops");
+			loadConfig();
 			
 			client = new Client();
 			if (!client.connectToServer())
@@ -197,7 +211,7 @@ public class Game extends GameApplet
 	{
 		try
 		{
-			currentGame.updater.closeRequested = true;
+			if (currentGame.updater != null) currentGame.updater.closeRequested = true;
 			client.running = false;
 			if (!Arise.wrapper) Game.applet.getAppletContext().showDocument(new URL("http://dakror.de"));
 			else System.exit(0);

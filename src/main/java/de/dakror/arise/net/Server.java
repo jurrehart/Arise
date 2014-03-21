@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import de.dakror.arise.game.Game;
 import de.dakror.arise.net.packet.Packet;
 import de.dakror.arise.net.packet.Packet.PacketTypes;
 import de.dakror.arise.net.packet.Packet00Handshake;
@@ -23,7 +24,10 @@ import de.dakror.arise.net.packet.Packet03World;
 import de.dakror.arise.net.packet.Packet04City;
 import de.dakror.arise.net.packet.Packet05Resources;
 import de.dakror.arise.net.packet.Packet06Building;
+import de.dakror.arise.net.packet.Packet07RenameCity;
+import de.dakror.arise.net.packet.Packet08PlaceBuilding;
 import de.dakror.arise.server.DBManager;
+import de.dakror.arise.server.ServerUpdater;
 import de.dakror.arise.settings.CFG;
 import de.dakror.gamesetup.util.Helper;
 
@@ -40,6 +44,8 @@ public class Server extends Thread
 	public boolean running;
 	public CopyOnWriteArrayList<User> clients = new CopyOnWriteArrayList<>();
 	
+	ServerUpdater updater;
+	
 	DatagramSocket socket;
 	
 	public Server(InetAddress ip)
@@ -53,6 +59,9 @@ public class Server extends Thread
 			setPriority(MAX_PRIORITY);
 			out("Connecting to database");
 			DBManager.init();
+			updater = new ServerUpdater();
+			out("Fetching configuration");
+			Game.loadConfig();
 			
 			out("Starting server at " + socket.getLocalAddress().getHostAddress() + ":" + socket.getLocalPort());
 			start();
@@ -93,6 +102,7 @@ public class Server extends Thread
 	public void parsePacket(byte[] data, InetAddress address, int port)
 	{
 		PacketTypes type = Packet.lookupPacket(data[0]);
+		User user = getUserForIP(address, port);
 		
 		switch (type)
 		{
@@ -163,7 +173,6 @@ public class Server extends Thread
 				try
 				{
 					Packet03World p = new Packet03World(data);
-					User user = getUserForIP(address, port);
 					boolean spawn = DBManager.spawnPlayer(p.getId(), user);
 					out("Player's first visit on world? " + spawn);
 					sendPacket(DBManager.getWorldForId(p.getId()), user);
@@ -181,7 +190,7 @@ public class Server extends Thread
 				try
 				{
 					for (Packet04City packet : DBManager.getCities(p.getWorldId()))
-						sendPacket(packet, getUserForIP(address, port));
+						sendPacket(packet, user);
 				}
 				catch (Exception e)
 				{
@@ -194,7 +203,7 @@ public class Server extends Thread
 				try
 				{
 					Packet05Resources p = new Packet05Resources(data);
-					sendPacket(new Packet05Resources(p.getCityId(), DBManager.getCityResources(p.getCityId())), getUserForIP(address, port));
+					if (DBManager.isCityFromUser(p.getCityId(), user)) sendPacket(new Packet05Resources(p.getCityId(), DBManager.getCityResources(p.getCityId())), user);
 					break;
 				}
 				catch (Exception e)
@@ -205,16 +214,54 @@ public class Server extends Thread
 			case BUILDING:
 			{
 				Packet06Building p = new Packet06Building(data);
-				if (p.getBuildingType() == 0) // validity check
+				if (p.getBuildingType() == 0 && DBManager.isCityFromUser(p.getCityId(), user)) // validity check
 				{
 					try
 					{
 						for (Packet06Building packet : DBManager.getCityBuildings(p.getCityId()))
-							sendPacket(packet, getUserForIP(address, port));
+							sendPacket(packet, user);
 					}
 					catch (Exception e)
 					{
 						e.printStackTrace();
+					}
+				}
+				break;
+			}
+			case RENAMECITY:
+			{
+				Packet07RenameCity p = new Packet07RenameCity(data);
+				if (DBManager.isCityFromUser(p.getCityId(), user))
+				{
+					boolean worked = DBManager.renameCity(p.getCityId(), p.getNewName(), user);
+					try
+					{
+						sendPacket(new Packet07RenameCity(p.getCityId(), worked ? p.getNewName() : "#false#"), getUserForIP(address, port));
+					}
+					catch (Exception e)
+					{
+						e.printStackTrace();
+					}
+				}
+				break;
+			}
+			case PLACEBUILDING:
+			{
+				Packet08PlaceBuilding p = new Packet08PlaceBuilding(data);
+				if (DBManager.isCityFromUser(p.getCityId(), user))
+				{
+					int id = DBManager.placeBuilding(p.getCityId(), p.getBuildingType(), p.getX(), p.getY());
+					if (id != 0)
+					{
+						try
+						{
+							sendPacket(DBManager.getCityBuilding(p.getCityId(), id), user);
+							sendPacket(new Packet05Resources(p.getCityId(), DBManager.getCityResources(p.getCityId())), user);
+						}
+						catch (Exception e)
+						{
+							e.printStackTrace();
+						}
 					}
 				}
 				break;
@@ -272,7 +319,6 @@ public class Server extends Thread
 			e.printStackTrace();
 		}
 		running = false;
-		// if (updater != null) updater.closeRequested = true;
 		socket.close();
 	}
 	
