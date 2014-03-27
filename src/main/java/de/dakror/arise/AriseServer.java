@@ -7,6 +7,7 @@ import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.net.InetAddress;
+import java.text.SimpleDateFormat;
 
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
@@ -22,6 +23,7 @@ import de.dakror.arise.net.Server;
 import de.dakror.arise.server.CommandHandler;
 import de.dakror.arise.settings.CFG;
 import de.dakror.arise.ui.MessageConsole;
+import de.dakror.dakrorbin.DakrorBin;
 
 /**
  * @author Dakror
@@ -34,15 +36,15 @@ public class AriseServer
 	
 	public static void main(String[] args) throws Exception
 	{
-		if (args.length > 0 && args[0].equals("-school")) // school fixes :D
-		{
-			System.setProperty("http.proxyHost", "192.168.0.7");
-			System.setProperty("http.proxyPort", "800");
-		}
-		
 		UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		
-		JFrame frame = new JFrame("Arise Server Console");
+		JFrame frame = new JFrame("Arise Server Console v");
+		
+		DakrorBin.init(frame, "Arise-Server");
+		DakrorBin.showDialog = false;
+		
+		frame.setTitle(frame.getTitle() + new SimpleDateFormat("dd.MM.yy HH:mm:ss").format(DakrorBin.buildTimestamp));
+		
 		frame.setIconImage(ImageIO.read(AriseServer.class.getResource("/img/system/logo.png")));
 		frame.setSize(800, 400);
 		

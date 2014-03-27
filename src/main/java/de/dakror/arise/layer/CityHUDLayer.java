@@ -18,7 +18,11 @@ import de.dakror.arise.game.building.Quarry;
 import de.dakror.arise.game.world.City;
 import de.dakror.arise.net.packet.Packet;
 import de.dakror.arise.net.packet.Packet.PacketTypes;
+import de.dakror.arise.net.packet.Packet05Resources;
+import de.dakror.arise.net.packet.Packet06Building;
 import de.dakror.arise.net.packet.Packet07RenameCity;
+import de.dakror.arise.net.packet.Packet09BuildingStageChange;
+import de.dakror.arise.settings.CFG;
 import de.dakror.arise.settings.Resources;
 import de.dakror.arise.settings.Resources.Resource;
 import de.dakror.arise.ui.ArmyLabel;
@@ -250,17 +254,11 @@ public class CityHUDLayer extends MPLayer
 		
 		if (Game.currentGame.alpha == 1 && goBackToWorld)
 		{
-			// cl.saveData();
 			Game.currentGame.removeLayer(CityHUDLayer.this);
 			Game.currentGame.removeLayer(cl);
 			goBackToWorld = false;
 			Game.currentGame.fadeTo(0, 0.05f);
 		}
-		
-		// if (cl.placedBuildings && tick % Game.currentGame.getUPS() == 0)
-		// {
-		// if (cl.updateBuildingStages()) updateBuildingbar();
-		// }
 		
 		updateComponents(tick);
 		
@@ -284,7 +282,7 @@ public class CityHUDLayer extends MPLayer
 	{
 		Resources products = new Resources();
 		for (Component c : cl.components)
-			if (c instanceof Building && (((Building) c).getStage() == 1 || ((Building) c).getTypeId() == 1/* Centre always active */)) products.add(((Building) c).getScalingProducts());
+			if (c instanceof Building && (((Building) c).getStage() == 1 || ((Building) c).getTypeId() == 1/* Center always active */)) products.add(((Building) c).getScalingProducts());
 		
 		products = Resources.mul(products, Game.world.getSpeed());
 		
@@ -292,7 +290,10 @@ public class CityHUDLayer extends MPLayer
 		{
 			if (c instanceof ResourceLabel)
 			{
-				if (((ResourceLabel) c).getResource().isUsable()) ((ResourceLabel) c).perHour = products.get(((ResourceLabel) c).getResource());
+				if (((ResourceLabel) c).getResource().isUsable())
+				{
+					((ResourceLabel) c).perHour = products.get(((ResourceLabel) c).getResource());
+				}
 				else ((ResourceLabel) c).off = products.get(((ResourceLabel) c).getResource()) / Game.world.getSpeed();
 			}
 		}
@@ -354,6 +355,51 @@ public class CityHUDLayer extends MPLayer
 				if (packet.getNewName().equals("#false#")) Game.currentGame.addLayer(new Alert("Ein Fehler ist aufgetreten. Die Stadt konnte nicht umbennant werden. Bitte probiere es erneut.", null));
 				else cl.city.setName(packet.getNewName());
 			}
+		}
+		
+		if (p.getType() == PacketTypes.BUILDING)
+		{
+			cl.activeBuilding = null;
+			
+			Packet06Building packet = (Packet06Building) p;
+			Building b = Building.getBuildingByTypeId(packet.getX(), packet.getY(), packet.getLevel(), packet.getBuildingType());
+			b.setStage(packet.getStage());
+			b.setStageChangeSecondsLeft(packet.getTimeleft());
+			b.setMetadata(packet.getMeta());
+			b.setId(packet.getId());
+			
+			cl.components.add(b);
+			
+			cl.sortComponents();
+			updateBuildingbar();
+		}
+		
+		if (p.getType() == PacketTypes.RESOURCES)
+		{
+			Packet05Resources packet = (Packet05Resources) p;
+			CityLayer.resources = packet.getResources();
+		}
+		
+		if (p.getType() == PacketTypes.BUILDINGSTAGECHANGE)
+		{
+			Packet09BuildingStageChange packet = (Packet09BuildingStageChange) p;
+			if (packet.getCityId() != cl.city.getId())
+			{
+				CFG.e("Packet09BuildingStageChange for different city. Ignored.");
+				return;
+			}
+			
+			for (Component c : cl.components)
+			{
+				if (c instanceof Building && packet.getBuildingId() == ((Building) c).getId())
+				{
+					((Building) c).setStage(packet.getNewStage());
+					((Building) c).setStageChangeSecondsLeft(0);
+					break;
+				}
+			}
+			
+			updateBuildingbar();
 		}
 	}
 }

@@ -1,11 +1,14 @@
 package de.dakror.arise.server;
 
+import de.dakror.dakrorbin.DakrorBin;
+
 /**
  * @author Dakror
  */
 public class ServerUpdater extends Thread
 {
 	boolean running;
+	long lastCheck;
 	
 	public ServerUpdater()
 	{
@@ -21,10 +24,17 @@ public class ServerUpdater extends Thread
 			while (running)
 			{
 				DBManager.updateBuildingTimers();
+				DBManager.updateBuildingStage();
+				if (System.currentTimeMillis() - lastCheck > 60000)
+				{
+					DakrorBin.checkForUpdates();
+					lastCheck = System.currentTimeMillis();
+				}
+				System.gc();
 				Thread.sleep(1000);
 			}
 		}
-		catch (InterruptedException e)
+		catch (Exception e)
 		{
 			e.printStackTrace();
 		}

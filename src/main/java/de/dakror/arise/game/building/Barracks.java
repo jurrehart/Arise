@@ -40,7 +40,7 @@ public class Barracks extends Building
 			@Override
 			public void trigger()
 			{
-				// queue(r, "S");
+				queue(r, "S");
 			}
 		});
 		
@@ -52,25 +52,25 @@ public class Barracks extends Building
 			@Override
 			public void trigger()
 			{
-				// queue(r2, "L");
+				queue(r2, "L");
 			}
 		});
 		
 		init();
 	}
 	
-	// protected void queue(Resources r, String n)
-	// {
-	// if (metadata.length() < Building.MAX_QUEUE)
-	// {
-	// CityLayer.resources.add(Resources.mul(r, -1));
-	// if (metadata.length() == 0) setStageChangeTimestamp(System.currentTimeMillis() / 1000);
-	// metadata += n;
-	// CityHUDLayer.cl.saveData();
-	//
-	// updateQueueDisplay();
-	// }
-	// }
+	protected void queue(Resources r, String n)
+	{
+		// if (metadata.length() < Building.MAX_QUEUE)
+		// {
+		// CityLayer.resources.add(Resources.mul(r, -1));
+		// if (metadata.length() == 0) setStageChangeTimestamp(System.currentTimeMillis() / 1000);
+		// metadata += n;
+		// CityHUDLayer.cl.saveData();
+		//
+		// updateQueueDisplay();
+		// }
+	}
 	
 	@Override
 	protected float getStageChangeDuration()
@@ -137,8 +137,6 @@ public class Barracks extends Building
 		}
 		((BuildButton) guiContainer.components.get(0)).number = S;
 		((BuildButton) guiContainer.components.get(1)).number = L;
-		
-		
 	}
 	
 	@Override

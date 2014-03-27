@@ -18,6 +18,7 @@ import de.dakror.arise.net.packet.Packet;
 import de.dakror.arise.net.packet.Packet.PacketTypes;
 import de.dakror.arise.net.packet.Packet00Handshake;
 import de.dakror.arise.net.packet.Packet01Login;
+import de.dakror.arise.net.packet.Packet01Login.Response;
 import de.dakror.arise.net.packet.Packet02Disconnect;
 import de.dakror.arise.net.packet.Packet02Disconnect.Cause;
 import de.dakror.arise.net.packet.Packet03World;
@@ -36,6 +37,8 @@ import de.dakror.gamesetup.util.Helper;
  */
 public class Server extends Thread
 {
+	public static Server currentServer;
+	
 	public static final int PORT = 14744;
 	public static final int PACKETSIZE = 255; // bytes
 	
@@ -50,6 +53,7 @@ public class Server extends Thread
 	
 	public Server(InetAddress ip)
 	{
+		currentServer = this;
 		try
 		{
 			dir = new File(CFG.DIR, "Server");
@@ -115,7 +119,7 @@ public class Server extends Thread
 			{
 				try
 				{
-					sendPacket(new Packet00Handshake(), new User(0, address, port));
+					sendPacket(new Packet00Handshake(), new User(0, 0, address, port));
 					out("Shook hands with: " + address.getHostAddress() + ":" + port);
 					break;
 				}
@@ -131,15 +135,30 @@ public class Server extends Thread
 					Packet01Login p = new Packet01Login(data);
 					String s = Helper.getURLContent(new URL("http://dakror.de/mp-api/login_noip.php?username=" + p.getUsername() + "&password=" + p.getPwdMd5()));
 					boolean loggedIn = s.contains("true");
-					if (loggedIn)
+					boolean worldExists = DBManager.getWorldForId(p.getWorldId()).getId() != -1;
+					if (loggedIn && worldExists)
 					{
 						String[] parts = s.split(":");
-						User u = new User(Integer.parseInt(parts[1].trim()), address, port);
-						out("User " + parts[2].trim() + " logged in. " + "(#" + u.getId() + ")");
-						sendPacket(new Packet01Login(parts[2], u.getId(), loggedIn), u);
-						clients.add(u);
+						User u = new User(Integer.parseInt(parts[1].trim()), p.getWorldId(), address, port);
+						boolean alreadyLoggedIn = getUserForId(u.getId()) != null;
+						
+						if (alreadyLoggedIn)
+						{
+							out("Refused login of " + address.getHostAddress() + ":" + port + " (" + Response.ALREADY_LOGGED_IN.name() + ")");
+							sendPacket(new Packet01Login(p.getUsername(), 0, p.getWorldId(), Response.ALREADY_LOGGED_IN), u);
+						}
+						else
+						{
+							out("User " + parts[2].trim() + " (#" + u.getId() + ")" + " logged in on world #" + p.getWorldId() + ".");
+							sendPacket(new Packet01Login(parts[2], u.getId(), p.getWorldId(), Response.LOGIN_OK), u);
+							clients.add(u);
+						}
 					}
-					else sendPacket(new Packet01Login(p.getUsername(), 0, loggedIn), new User(0, address, port));
+					else
+					{
+						out("Refused login of " + address.getHostAddress() + ":" + port + " (" + (!loggedIn ? Response.BAD_LOGIN : Response.BAD_WORLD_ID).name() + ")");
+						sendPacket(new Packet01Login(p.getUsername(), 0, p.getWorldId(), !loggedIn ? Response.BAD_LOGIN : Response.BAD_WORLD_ID), new User(0, 0, address, port));
+					}
 				}
 				catch (Exception e)
 				{
@@ -267,7 +286,7 @@ public class Server extends Thread
 				break;
 			}
 			default:
-				err("Reveived unhandled packet (" + address.getHostAddress() + ":" + port + ") " + type + " [" + Packet.readData(data) + "]");
+				err("Received unhandled packet (" + address.getHostAddress() + ":" + port + ") " + type + " [" + Packet.readData(data) + "]");
 		}
 	}
 	
@@ -304,6 +323,14 @@ public class Server extends Thread
 	{
 		for (User u : clients)
 			if (u.getIP().equals(address) && u.getPort() == port) return u;
+		
+		return null;
+	}
+	
+	public User getUserForId(int id)
+	{
+		for (User u : clients)
+			if (u.getId() == id) return u;
 		
 		return null;
 	}
